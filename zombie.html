@@ -1211,9 +1211,10 @@ readyStates[cId]=false;
 function connectWS(){
   try{
     //ws=new WebSocket('ws://localhost:3000');
-    const wsUrl = location.hostname === 'localhost'
+    /*const wsUrl = location.hostname === 'localhost'
       ? 'ws://localhost:3000'
-      : 'wss://' + location.hostname;
+      : 'wss://' + location.hostname;*/
+    const socket = new WebSocket("wss://zombie-shooter-production.up.railway.app");
     ws = new WebSocket(wsUrl);
     ws.onopen=()=>sendWS({type:'hello',id:cId,name:'Player-'+cId});
     ws.onmessage=ev=>{try{handleWS(JSON.parse(ev.data));}catch(e){}};
