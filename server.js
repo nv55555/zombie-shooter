@@ -1,6 +1,12 @@
 // Simple coop relay server with ready/countdown.
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 3000 });
+const http = require('http');
+const WebSocket = require('ws');
+
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer();
+const wss = new WebSocket.Server({ server });
 
 const clients = new Map();
 let readyMap = {};
@@ -105,4 +111,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log('Coop relay server running on ws://localhost:3000');
+server.listen(PORT, "0.0.0.0", () => {
+  console.log("Server running on port " + PORT);
+});
