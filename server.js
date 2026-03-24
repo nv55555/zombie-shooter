@@ -1,24 +1,21 @@
-// Simple coop relay server with ready/countdown
-
+// Simple coop relay server with ready/countdown.
+const WebSocket = require('ws');
 const http = require('http');
-const { WebSocketServer } = require('ws'); // ✅ FIX: geen dubbele WebSocket
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const server = http.createServer();
-const wss = new WebSocketServer({ server });
+const wss = new WebSocket.Server({ server });
 
 const clients = new Map();
 let readyMap = {};
 let countdown = 0;
 let countdownTimer = null;
 
-// ─────────────────────────────────────────────
-
 function broadcast(msg) {
   const data = JSON.stringify(msg);
   for (const [id, c] of clients.entries()) {
-    if (c.ws.readyState === 1) { // 1 = OPEN
+    if (c.ws.readyState === WebSocket.OPEN) {
       c.ws.send(data);
     }
   }
@@ -36,7 +33,20 @@ function broadcastReady() {
   broadcast({ type: 'ready_update', ready: readyMap });
 }
 
-// ─────────────────────────────────────────────
+function resetReady() {
+  for (const id in readyMap) readyMap[id] = false;
+}
+
+function startWaveNow() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  countdown = 0;
+  resetReady();
+  broadcastReady();
+  broadcast({ type: 'start_wave' });
+}
 
 function startCountdown() {
   if (countdownTimer) return;
@@ -50,26 +60,18 @@ function startCountdown() {
     broadcast({ type: 'countdown', seconds: countdown });
 
     const ids = Array.from(clients.keys());
-    const allReady =
-      ids.length > 0 && ids.every(id => readyMap[id]);
+    const allReady = ids.length > 0 && ids.every(id => readyMap[id]);
 
-    if (allReady || countdown <= 0) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-      countdown = 0;
+    if (allReady) {
+      startWaveNow();
+      return;
+    }
 
-      // reset ready
-      for (const id of Object.keys(readyMap)) {
-        readyMap[id] = false;
-      }
-
-      broadcastReady();
-      broadcast({ type: 'start_wave' });
+    if (countdown <= 0) {
+      startWaveNow();
     }
   }, 1000);
 }
-
-// ─────────────────────────────────────────────
 
 wss.on('connection', (ws) => {
   let clientId = null;
@@ -78,7 +80,6 @@ wss.on('connection', (ws) => {
     try {
       const msg = JSON.parse(m.toString());
 
-      // HELLO
       if (msg.type === 'hello') {
         clientId = msg.id;
 
@@ -98,7 +99,6 @@ wss.on('connection', (ws) => {
         broadcastReady();
       }
 
-      // POSITION UPDATE
       if (msg.type === 'pos' && clientId) {
         const c = clients.get(clientId);
         if (c) {
@@ -112,44 +112,24 @@ wss.on('connection', (ws) => {
             weapon: msg.weapon
           };
         }
-
         broadcastPlayers();
       }
 
-      // READY SYSTEM
       if (msg.type === 'ready' && clientId) {
         readyMap[msg.id] = !!msg.ready;
-
         broadcastReady();
 
         const ids = Array.from(clients.keys());
-        const allReady =
-          ids.length > 0 && ids.every(id => readyMap[id]);
+        const allReady = ids.length > 0 && ids.every(id => readyMap[id]);
 
         if (allReady) {
-          // start meteen
-          if (countdownTimer) {
-            clearInterval(countdownTimer);
-            countdownTimer = null;
-          }
-
-          for (const id of Object.keys(readyMap)) {
-            readyMap[id] = false;
-          }
-
-          broadcastReady();
-          broadcast({ type: 'start_wave' });
+          startWaveNow();
         } else {
-          const anyoneReady =
-            Object.values(readyMap).some(v => v);
-
-          if (anyoneReady && !countdownTimer) {
-            startCountdown();
-          }
+          const anyoneReady = Object.values(readyMap).some(v => v);
+          if (anyoneReady && !countdownTimer) startCountdown();
         }
       }
 
-      // SHOOT SYNC
       if (msg.type === 'shoot') {
         broadcast({
           type: 'shoot',
@@ -161,20 +141,8 @@ wss.on('connection', (ws) => {
         });
       }
 
-      // LEAVE
-      if (msg.type === 'leave' && msg.id) {
-        if (clients.has(msg.id)) {
-          clients.get(msg.id).ws.close();
-          clients.delete(msg.id);
-          delete readyMap[msg.id];
-
-          broadcastPlayers();
-          broadcastReady();
-        }
-      }
-
     } catch (e) {
-      console.warn('Bad message:', e);
+      console.warn('bad msg', e);
     }
   });
 
@@ -182,14 +150,11 @@ wss.on('connection', (ws) => {
     if (clientId) {
       clients.delete(clientId);
       delete readyMap[clientId];
-
       broadcastPlayers();
       broadcastReady();
     }
   });
 });
-
-// ─────────────────────────────────────────────
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("✅ Server running on port " + PORT);
