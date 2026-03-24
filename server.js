@@ -5,8 +5,8 @@ const http = require('http');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer();
-//const wss = new WebSocket.Server({ server });
-const socket = new WebSocket("wss://zombie-shooter-production.up.railway.app");
+const wss = new WebSocket.Server({ server });
+
 
 const clients = new Map();
 let readyMap = {};
